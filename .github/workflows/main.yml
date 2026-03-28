@@ -2,36 +2,50 @@ name: Isradata Auto Poster
 
 on:
   schedule:
-    - cron: '*/30 * * * *' # Запуск каждые 30 минут
-  workflow_dispatch:      # Кнопка для ручного запуска
+    # Запуск каждые 30 минут (можно менять)
+    - cron: '*/30 * * * *'
+  # Позволяет запускать бота вручную кнопкой во вкладке Actions
+  workflow_dispatch:
 
 jobs:
-  run-bot:
+  build:
     runs-on: ubuntu-latest
+    
+    # Даем GitHub право записывать обновленный список вакансий в ваш репозиторий
     permissions:
-      contents: write    # Разрешение боту записывать данные в репозиторий
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      contents: write
 
+    steps:
+      # 1. Копируем ваш код из репозитория на виртуальный компьютер
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Устанавливаем Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
+      # 3. Устанавливаем библиотеки для чтения RSS и работы с запросами
       - name: Install dependencies
-        run: pip install feedparser requests
+        run: |
+          pip install feedparser requests
 
-      - name: Run Bot Script
+      # 4. Запускаем сам скрипт бота
+      # Скрипт возьмет TOKEN и CHAT_ID из тех Secret, что вы только что создали
+      - name: Run bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python bot.py
 
-      - name: Save database changes
+      # 5. Сохраняем обновленный файл sent_jobs.txt обратно в ваш GitHub
+      # Это "память" бота, чтобы он не слал старые вакансии в следующий раз
+      - name: Commit and push changes
         run: |
-          git config --global user.name "Isradata Bot"
-          git config --global user.email "bot@isradata.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add sent_jobs.txt
-          git commit -m "Update sent jobs database [skip ci]" || echo "No changes to commit"
+          # Если новых вакансий не было, git commit выдаст ошибку, поэтому добавляем || exit 0
+          git commit -m "Update sent jobs database [skip ci]" || exit 0
           git push
