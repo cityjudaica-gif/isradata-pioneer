@@ -1,37 +1,64 @@
-name: Isradata Auto Poster
+import feedparser
+import requests
+import os
 
-on:
-  schedule:
-    - cron: '*/30 * * * *' # Запуск каждые 30 минут
-  workflow_dispatch:      # Кнопка для ручного запуска
+# Получаем секретные ключи из настроек GitHub
+TOKEN = os.getenv('TELEGRAM_TOKEN')
+CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+RSS_URL = "https://www.isradata.com/rss.xml"
+DB_FILE = "sent_jobs.txt"
 
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write    # Разрешение боту записывать данные в репозиторий
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+def send_telegram(text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False
+    }
+    try:
+        response = requests.post(url, data=payload)
+        response.raise_for_status()
+    except Exception as e:
+        print(f"Ошибка при отправке в Telegram: {e}")
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+def main():
+    # 1. Загружаем и парсим RSS ленту
+    feed = feedparser.parse(RSS_URL)
+    
+    # 2. Проверяем наличие файла-базы данных. Если нет - создаем пустой.
+    if not os.path.exists(DB_FILE):
+        with open(DB_FILE, 'w', encoding='utf-8') as f:
+            f.write("")
+    
+    # 3. Читаем список уже отправленных ссылок
+    with open(DB_FILE, 'r', encoding='utf-8') as f:
+        sent_urls = set(f.read().splitlines())
 
-      - name: Install dependencies
-        run: pip install feedparser requests
+    new_links = []
+    
+    # 4. Обрабатываем записи (от старых к новым)
+    for entry in reversed(feed.entries):
+        if entry.link not in sent_urls:
+            # Формируем текст сообщения
+            # entry.title - заголовок вакансии
+            # entry.link - ссылка
+            message = f"<b>{entry.title}</b>\n\n{entry.link}"
+            
+            # Отправляем
+            send_telegram(message)
+            
+            # Добавляем в список новых
+            new_links.append(entry.link)
+            print(f"Отправлено: {entry.title}")
 
-      - name: Run Bot Script
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python bot.py
+    # 5. Записываем новые ссылки в базу, чтобы не слать их повторно
+    if new_links:
+        with open(DB_FILE, 'a', encoding='utf-8') as f:
+            for link in new_links:
+                f.write(link + "\n")
+    else:
+        print("Новых вакансий не найдено.")
 
-      - name: Save database changes
-        run: |
-          git config --global user.name "Isradata Bot"
-          git config --global user.email "bot@isradata.com"
-          git add sent_jobs.txt
-          git commit -m "Update sent jobs database [skip ci]" || echo "No changes to commit"
-          git push
+if __name__ == "__main__":
+    main()
