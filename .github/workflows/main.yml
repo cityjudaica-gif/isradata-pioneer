@@ -11,14 +11,13 @@ jobs:
     permissions:
       contents: write
     env:
-      # Убираем предупреждение о Node.js, о котором вы написали
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5 # Обновили версию до v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
