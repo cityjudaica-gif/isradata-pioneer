@@ -4,7 +4,7 @@ import os
 import time
 import requests
 
-# Конфигурация
+# Загрузка переменных
 TOKEN = os.getenv('TELEGRAM_TOKEN')
 CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 RSS_URL = "https://www.isradata.com/rss.xml"
@@ -12,81 +12,74 @@ DB_FILE = "sent_jobs.txt"
 
 def send_telegram(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
+    payload = {
+        "chat_id": CHAT_ID, 
+        "text": text, 
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False
+    }
     try:
         r = requests.post(url, data=payload, timeout=15)
+        if r.status_code != 200:
+            print(f"--- [!] Ошибка TG: {r.status_code} - {r.text}")
         return r.status_code
     except Exception as e:
-        print(f" Ошибка запроса к Telegram: {e}")
+        print(f"--- [!] Критическая ошибка сети при отправке: {e}")
         return 500
 
 def main():
-    print("--- [LOG] Запуск проверки Isradata ---")
+    print("--- СТАРТ ПРОВЕРКИ ---")
     
-    # Инициализация скрейпера
     scraper = cloudscraper.create_scraper(
-        browser={
-            'browser': 'chrome',
-            'platform': 'windows',
-            'desktop': True
-        }
+        browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True}
     )
 
     try:
-        # 1. Попытка получить RSS
+        # Получаем RSS
         response = scraper.get(RSS_URL, timeout=30)
         
         if response.status_code != 200:
-            print(f"--- [LOG] Код {response.status_code}. Пробуем прогрев сессии... ---")
-            scraper.get("https://www.isradata.com/", timeout=20)
-            response = scraper.get(RSS_URL, timeout=20)
-
-        # Отладочная информация в логах GitHub
-        print(f"--- [LOG] Статус сервера: {response.status_code}")
-        print(f"--- [LOG] Размер полученных данных: {len(response.text)} симв.")
-
-        if "Cloudflare" in response.text or "Just a moment" in response.text:
-            print("--- [ALERT] Обнаружена страница проверки Cloudflare! Данные не получены. ---")
+            print(f"--- [!] Сайт Isradata вернул код: {response.status_code}")
             return
 
         feed = feedparser.parse(response.text)
         
         if not feed.entries:
-            print("--- [LOG] RSS лента пуста (записей не найдено). ---")
+            print("--- [!] RSS лента пуста или заблокирована.")
             return
 
-        print(f"--- [LOG] Всего вакансий в ленте: {len(feed.entries)} ---")
-
-        # 2. Работа с базой данных
+        # Загружаем базу отправленных
         if not os.path.exists(DB_FILE):
-            open(DB_FILE, 'w', encoding='utf-8').close()
-            print("--- [LOG] Создан новый файл базы данных. ---")
+            with open(DB_FILE, 'w', encoding='utf-8') as f: pass
         
         with open(DB_FILE, 'r', encoding='utf-8') as f:
             sent_urls = set(f.read().splitlines())
 
-        # 3. Рассылка новых вакансий
+        print(f"--- Найдено в ленте: {len(feed.entries)} вакансий")
+        
         new_count = 0
+        # Обрабатываем от старых к новым
         for entry in reversed(feed.entries):
             if entry.link not in sent_urls:
                 title = entry.title.strip()
                 message = f"<b>{title}</b>\n\n{entry.link}"
                 
-                status = send_telegram(message)
+                print(f"--- Попытка отправки: {title}")
+                res_code = send_telegram(message)
                 
-                if status == 200:
+                if res_code == 200:
                     with open(DB_FILE, 'a', encoding='utf-8') as f:
                         f.write(entry.link + "\n")
                     new_count += 1
-                    print(f"--- [OK] Отправлено: {title}")
-                    time.sleep(2) # Пауза для защиты от спам-фильтра TG
-                else:
-                    print(f"--- [ERROR] Ошибка TG ({status}) на вакансии: {title}")
+                    time.sleep(3) # Пауза между постами обязательна!
+                elif res_code == 429:
+                    print("--- [!] Слишком много запросов (Flood Limit). Ждем...")
+                    break # Останавливаемся, чтобы не получить бан
 
-        print(f"--- [LOG] Завершено. Новых постов: {new_count} ---")
+        print(f"--- Итог: Отправлено {new_count} новых вакансий.")
 
     except Exception as e:
-        print(f"--- [CRITICAL] Ошибка выполнения: {e} ---")
+        print(f"--- [!] Ошибка в main: {e}")
 
 if __name__ == "__main__":
     main()
