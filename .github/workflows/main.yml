@@ -2,22 +2,24 @@ name: Isradata Auto Poster
 
 on:
   schedule:
-    # Запуск каждые 30 минут
-    - cron: '*/30 * * * *'
-  workflow_dispatch: # Позволяет запускать вручную кнопкой
+    - cron: '*/30 * * * *' # Запуск каждые 30 минут
+  workflow_dispatch: # Возможность запустить вручную кнопкой
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Дает право записывать файл обратно в репозиторий
+      contents: write
     
+    env:
+      # Убираем предупреждение о Node.js
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # Важно: забираем историю, чтобы push прошел гладко
-          fetch-depth: 0 
+          fetch-depth: 0 # Загружаем всю историю для корректного push
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,17 +38,20 @@ jobs:
 
       - name: Save database changes
         run: |
-          # Проверяем, существует ли файл, если нет - создаем
-          touch sent_jobs.txt
-          
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Гарантируем наличие файла базы
+          touch sent_jobs.txt
+          
           git add sent_jobs.txt
           
-          # Коммитим только если есть изменения
+          # Сначала забираем свежую версию с сервера, чтобы избежать ошибок синхронизации
+          git pull origin main --rebase
+          
+          # Коммитим и пушим только если есть изменения
           if git diff --staged --quiet; then
-            echo "Нет новых вакансий для сохранения."
+            echo "Новых данных для сохранения нет."
           else
             git commit -m "Update sent_jobs.txt [skip ci]"
             git push origin main
