@@ -17,7 +17,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Нужно для pull --rebase
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -25,8 +25,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          pip install feedparser requests cloudscraper
+        run: pip install feedparser requests cloudscraper
 
       - name: Run Bot Script
         env:
@@ -39,14 +38,17 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Гарантируем, что файл существует перед git add
-          touch sent_jobs.txt
+          # 1. Сохраняем наши изменения во временное хранилище (stash)
+          git stash
           
-          # РЕШЕНИЕ: Подтягиваем актуальную базу перед сохранением
+          # 2. Получаем актуальную версию из репозитория
           git pull origin main --rebase
           
-          git add sent_jobs.txt
+          # 3. Возвращаем наши изменения обратно
+          git stash pop || echo "No changes to pop"
           
+          # 4. Добавляем и пушим
+          git add sent_jobs.txt
           if git diff --staged --quiet; then
             echo "Нет новых данных для сохранения."
           else
