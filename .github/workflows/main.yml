@@ -17,7 +17,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Важно для корректной синхронизации истории
+          fetch-depth: 0 # Нужно для pull --rebase
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,14 +39,16 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # Гарантируем, что файл существует перед git add
           touch sent_jobs.txt
-          git add sent_jobs.txt
           
-          # РЕШЕНИЕ ВАШЕЙ ОШИБКИ: забираем изменения с сервера перед отправкой
+          # РЕШЕНИЕ: Подтягиваем актуальную базу перед сохранением
           git pull origin main --rebase
           
+          git add sent_jobs.txt
+          
           if git diff --staged --quiet; then
-            echo "Нет новых данных для коммита."
+            echo "Нет новых данных для сохранения."
           else
             git commit -m "Update sent_jobs.txt [skip ci]"
             git push origin main
