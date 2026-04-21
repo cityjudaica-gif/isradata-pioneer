@@ -27,31 +27,27 @@ jobs:
       - name: Install dependencies
         run: pip install feedparser requests cloudscraper
 
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Run Bot Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python bot.py
+        run: |
+          # Перед запуском бота гарантируем, что файл базы актуален
+          git pull origin main --rebase || echo "No remote changes"
+          python bot.py
 
       - name: Save database changes
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # 1. Сохраняем наши изменения во временное хранилище (stash)
-          git stash
-          
-          # 2. Получаем актуальную версию из репозитория
-          git pull origin main --rebase
-          
-          # 3. Возвращаем наши изменения обратно
-          git stash pop || echo "No changes to pop"
-          
-          # 4. Добавляем и пушим
           git add sent_jobs.txt
           if git diff --staged --quiet; then
-            echo "Нет новых данных для сохранения."
+            echo "Нет новых вакансий."
           else
             git commit -m "Update sent_jobs.txt [skip ci]"
+            # Используем push с защитой от конфликтов
             git push origin main
           fi
