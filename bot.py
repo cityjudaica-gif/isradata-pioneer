@@ -28,15 +28,15 @@ def main():
     try:
         response = scraper.get(RSS_URL, timeout=30)
         if response.status_code != 200:
-            print(f"Ошибка доступа к сайту: {response.status_code}")
+            print(f"Сайт недоступен: {response.status_code}")
             return
 
         feed = feedparser.parse(response.text)
         if not feed.entries:
-            print("Лента RSS пуста.")
+            print("Лента пуста.")
             return
 
-        # Загружаем базу и очищаем её от лишних пробелов
+        # Загрузка базы
         if not os.path.exists(DB_FILE):
             open(DB_FILE, 'w', encoding='utf-8').close()
         
@@ -45,24 +45,23 @@ def main():
 
         new_count = 0
         for entry in reversed(feed.entries):
-            clean_link = entry.link.strip() # Очистка ссылки
+            link = entry.link.strip()
             
-            if clean_link not in sent_urls:
+            if link not in sent_urls:
                 title = entry.title.strip()
-                message = f"<b>{title}</b>\n\n{clean_link}"
+                print(f"Новая вакансия: {title}")
                 
-                print(f"Отправка новой вакансии: {title}")
-                if send_telegram(message) == 200:
+                if send_telegram(f"<b>{title}</b>\n\n{link}") == 200:
                     with open(DB_FILE, 'a', encoding='utf-8') as f:
-                        f.write(clean_link + "\n")
-                    sent_urls.add(clean_link)
+                        f.write(link + "\n")
+                    sent_urls.add(link)
                     new_count += 1
-                    time.sleep(3) # Пауза против бана
+                    time.sleep(3) # Анти-спам пауза
 
-        print(f"--- ИТОГ: Отправлено {new_count} новых сообщений ---")
+        print(f"--- ИТОГ: Отправлено {new_count} ---")
 
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Критическая ошибка: {e}")
 
 if __name__ == "__main__":
     main()
